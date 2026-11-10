@@ -1,0 +1,67 @@
+# Non-Technical Glossary
+
+Networking and cybersecurity often rely on heavy jargon. Here is a friendly, plain-English reference guide explaining the core terms used throughout Cerberus.
+
+---
+
+### **ARP (Address Resolution Protocol)**
+The "address book" of your local network. When your computer knows an IP address (like `192.168.1.50`) but needs to send physical Wi-Fi or Ethernet signals to it, it uses ARP to ask: *"Who has this IP address, and what is your physical hardware number (MAC address)?"*
+
+---
+
+### **CIDR & Subnet (e.g. `192.168.1.0/24`)**
+The boundary of your local private network. The `/24` part simply means your router manages a neighborhood of 254 possible device numbers (from `.1` to `.254`). Cerberus scans this exact neighborhood.
+
+---
+
+### **CVE (Common Vulnerabilities and Exposures)**
+A standardized identification number given to publicly known security flaws in software (like `CVE-2023-38408`). When Cerberus finds an open service, it compares the software version against known CVE databases to see if that program has known flaws.
+
+---
+
+### **CVSS (Common Vulnerability Scoring System)**
+A severity rating from **0.0 to 10.0** indicating how dangerous a software flaw is:
+- **0.1 – 3.9:** Low
+- **4.0 – 6.9:** Medium
+- **7.0 – 8.9:** High
+- **9.0 – 10.0:** Critical (often allows hackers to take over the device remotely)
+
+---
+
+### **DHCP (Dynamic Host Configuration Protocol)**
+The automated system inside your home or office router that hands out an IP address to your phone or laptop whenever you connect to Wi-Fi.
+
+---
+
+### **eBPF (Extended Berkeley Packet Filter)**
+A revolutionary technology built into the Linux operating system kernel. It allows security tools (like the Cerberus Agent) to run tiny, ultra-fast safety probes directly inside the operating system to watch what programs are doing, without slowing down the machine.
+
+---
+
+### **IPC (Inter-Process Communication)**
+How two programs on the same computer talk to each other without using the internet or local network. The Cerberus Desktop UI uses Wails IPC to talk directly to the Sentinel security engine in memory.
+
+---
+
+### **MAC Address (Hardware vs. Randomized)**
+- **Hardware MAC (UAA):** A unique 12-character physical fingerprint burned into your device's network card at the factory (e.g., `aa:bb:cc:11:22:33`).
+- **Randomized MAC (LAA):** A privacy feature used by modern iPhones and Android devices that creates a fake, synthetic MAC address so commercial shopping malls cannot track you between locations. Cerberus knows how to recognize randomized MACs without losing track of your device.
+
+---
+
+### **mDNS & Bonjour**
+A protocol that allows devices like Apple TVs, printers, and smart speakers to announce their human-friendly names (like `Living-Room-Speaker.local`) to other machines on the same Wi-Fi without needing a central server.
+
+---
+
+### **MITRE ATT&CK**
+A globally recognized encyclopedia of real-world hacker tactics and techniques. When Cerberus detects malware injecting itself into another program, it tags the event with a specific MITRE code (like `T1055 - Process Injection`).
+
+---
+
+### **Port & Sockets**
+Think of an IP address as the street address of an apartment building, and **ports** as the individual apartment doors:
+- Port `80` & `443`: Web pages
+- Port `22`: Secure terminal (SSH)
+- Port `445`: File sharing (SMB)
+There are **65,535** total doors. Cerberus checks all 65,535 doors in seconds to verify none were left unlocked accidentally.

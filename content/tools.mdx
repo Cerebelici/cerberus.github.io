@@ -1,0 +1,50 @@
+# Internal Tools & Platform Stacks
+
+Cerberus does not reinvent raw networking primitives; instead, it coordinates proven, high-performance open-source tools with native operating system link-layer APIs.
+
+---
+
+## 1. Wails v2 (Desktop Architecture)
+
+**Wails v2** is a lightweight, Go-based alternative to Electron. 
+
+- **Why Not Electron?** Electron bundles an entire Chromium browser and Node.js runtime, often consuming 200–400 MB of RAM before performing any useful work. Wails compiles directly into a native OS binary using the operating system's built-in web engine (WebKit on macOS and Linux, WebView2 on Windows).
+- **Zero-HTTP IPC:** The frontend talks to the Sentinel daemon through native CGo/OS message passing. There are no local web ports for attackers to exploit.
+
+---
+
+## 2. Scanning Binaries (Nmap & RustScan)
+
+| Tool | Role in Cerberus | Why It Is Used |
+|---|---|---|
+| **RustScan** | Stage 2 Port Sweep | Written in Rust. Capable of scanning all 65,535 TCP ports in under 3 seconds using asynchronous socket multiplexing. Bundled in desktop releases. |
+| **Nmap (≥ 7.80)** | Stage 3 Service & Vuln Audit | The gold standard for deep OS fingerprinting (`-O`), service protocol analysis (`-sV`), and CVE discovery using the embedded `vulners` NSE script. |
+
+<MetricBar
+  label="Port Sweep Speed (65,535 Ports)"
+  value="3.1s"
+  percentage={94}
+  benchmark="RustScan vs Nmap: 40x speedup"
+  color="emerald"
+  subtext="Cerberus executes RustScan for open port detection, then focuses Nmap solely on those ports."
+/>
+
+---
+
+## 3. OS Link-Layer & Kernel APIs
+
+Raw packet capture and Layer-2 link-layer queries require deep platform-specific integration. Cerberus implements native providers for each major OS in `internal/platform/`:
+
+### Linux
+- **Kernel Neighbor Cache:** Interrogates Linux `netlink` sockets directly to extract ARP/NDP tables with zero command-line parsing overhead.
+- **Capabilities:** Requires `cap_net_raw`, `cap_net_admin`, and `cap_net_bind_service` or root privileges.
+
+### macOS
+- **Kernel Routing Cache:** Queries link-layer neighbor states through native BSD `sysctl` kernel APIs (`NET_RT_DUMP2`).
+- **Privileged Helper (`SMJobBless`):** Installs `com.cerberus.helper` in `/Library/PrivilegedHelperTools/`. Installation triggers the native macOS Touch ID or administrator password prompt. The helper executes raw packet sweeps while the UI runs unprivileged.
+- **Local Network Privacy:** Automatically coordinates with macOS's "Local Network Privacy" security dialog on the first scan.
+
+### Windows
+- **Link-Layer Neighbors:** Uses Windows IP Helper API (`GetIpNetTable2`) in `internal/platform/platform_windows.go` to extract hardware MAC addresses directly from the Windows TCP/IP stack.
+- **Elevation:** The desktop executable embeds a `requireAdministrator` application manifest, prompting standard Windows UAC elevation on launch.
+- **Npcap Driver:** Npcap is mandatory on Windows for raw socket creation. Cerberus detects whether Npcap is present during preflight checks and guides the user if missing.

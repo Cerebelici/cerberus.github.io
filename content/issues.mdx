@@ -1,0 +1,72 @@
+# Encountered Issues & Real-World Challenges
+
+Auditing modern networks involves overcoming aggressive hardware constraints, vendor privacy safeguards, and operating system variances. Here is an overview of the technical hurdles encountered during Cerberus development and how they were solved.
+
+---
+
+## 1. Router & Device Speed Limits
+
+<IssueCard
+  title="1. Router Packet Processing & Port Scan Throttling"
+  problem="High-speed port sweeps (e.g. 5,000+ packets/sec) cause home and small-office routers to overheat, drop packets, or disconnect other Wi-Fi devices."
+  cause="Consumer routers possess limited CPU and small NAT state tables. When flooded with SYN packets, state tables fill up, dropping legitimate traffic."
+  solution="Engineered a Tri-Stage Hybrid pipeline: Stage 1 ARP mapping bounds packet bursts, and RustScan uses adaptive batching to find open ports before Nmap audits them."
+  impact="Eliminated router lockups while increasing full-port audit speed by 60x."
+/>
+
+<MetricBar
+  label="Subnet Bandwidth Impact during Full Sweep"
+  value="< 250 KB/s"
+  percentage={15}
+  benchmark="Safe router threshold: 2 MB/s"
+  color="emerald"
+  subtext="Cerberus serializes scan work through scanGate, preventing network packet storms."
+/>
+
+---
+
+## 2. Router Variances & mDNS Filtering
+
+<IssueCard
+  title="2. Router mDNS / Multicast Isolation"
+  problem="Many Wi-Fi routers disable multicast forwarding (mDNS / SSDP) between Wi-Fi bands (2.4 GHz vs 5 GHz) or between Ethernet and Wi-Fi."
+  cause="mDNS relies on 224.0.0.251 / UDP 5353 multicast, which some routers drop to reduce wireless broadcast traffic."
+  solution="Multi-channel fallback: if mDNS fails, Cerberus queries the router gateway directly via reverse DNS (PTR), checks NetBIOS (UDP 137), and parses UPnP descriptors."
+  impact="Ensures accurate hostnames even on strict commercial or segmented Wi-Fi networks."
+/>
+
+---
+
+## 3. Mobile Device Sleep Modes & Power Saving
+
+<IssueCard
+  title="3. Sleeping Mobile Devices (Power-Saving ARP Offload)"
+  problem="Smartphones locked in sleep mode appear as 'dead' hosts to port scanners because all TCP listening ports are shut down."
+  cause="iOS and Android power management halts user-space services. The low-power Wi-Fi chip answers ARP queries on behalf of the sleeping main CPU."
+  solution="Created the Sleeping Mobile Heuristic Classifier in internal/identity/resolver.go. When a device answers Stage 1 ARP with a randomized MAC but has 0 open ports, Cerberus classifies it as a sleeping smartphone."
+  impact="Device stays online on the dashboard instead of flapping between 'up' and 'down'."
+/>
+
+---
+
+## 4. Vendor Security Measures & MAC Randomization
+
+<IssueCard
+  title="4. Private Wi-Fi Addresses & MAC Randomization"
+  problem="Apple iOS 14+, Android 10+, and Windows 11 randomize their MAC addresses by default, creating duplicate device entries on every scan."
+  cause="Operating systems mask their factory hardware MAC addresses with synthetic Locally Administered Addresses (LAA) for privacy."
+  solution="Implemented 3-Tier Identity Matching (internal/identity/matcher.go). Inspects the LAA bit (Byte 0, Bit 1 == 1) and utilizes persistent per-SSID MACs, NetBIOS names, and port fingerprint hashes to link sessions."
+  impact="Preserves continuous device timeline histories without creating duplicate ghosts."
+/>
+
+---
+
+## 5. Heterogeneous Operating System Stacks
+
+<IssueCard
+  title="5. Different Networking Stacks on Linux, macOS, and Windows"
+  problem="Link-layer raw packet capture, ARP cache reading, and privileged execution require completely different APIs on every operating system."
+  cause="Linux uses Netlink sockets and Linux capabilities; macOS uses BSD sysctl routing dumps and SMJobBless LaunchDaemons; Windows requires Npcap and IP Helper APIs."
+  solution="Built a clean platform abstraction layer (internal/platform/) with dedicated native implementations for Darwin, Linux, and Windows."
+  impact="Consistent, cross-platform behavior across all supported desktop operating systems."
+/>

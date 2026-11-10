@@ -1,0 +1,127 @@
+# Data Models
+
+The core data structures of Cerberus are defined in `internal/model/`. These models are serialized across SQLite database tables, Wails IPC responses, and agent ingest payloads.
+
+---
+
+## 1. Network Entities
+
+### `Device`
+Represents an individual physical or virtual endpoint on the network.
+
+```typescript
+interface Device {
+  id: number;
+  current_ip: string;
+  mac?: string;
+  hostname?: string;
+  vendor?: string;
+  status: "up" | "down";
+  first_seen: string;          // ISO 8601 Timestamp
+  last_seen: string;
+  asset_uid: string;           // Persistent UUID surviving IP/MAC shifts
+  mac_is_random: boolean;      // True if LAA randomized MAC detected
+  managed: boolean;            // True if Cerberus Agent is installed
+  identity_confidence: number; // 0.0 to 1.0 confidence rating
+  criticality: "low" | "normal" | "high" | "critical";
+  score?: number;              // Calculated posture score (0.0 to 100.0)
+  services: Service[];
+  vulnerabilities: Vulnerability[];
+}
+```
+
+### `DeviceAddress`
+Tracks the historical IP lease attachments for a device. When a device receives a new DHCP address, the old lease is marked as `closed: true` while preserving the device identity.
+
+### `Service`
+Represents a network service listening on an open port.
+
+```typescript
+interface Service {
+  id: number;
+  device_id: number;
+  port: number;                // e.g. 22, 80, 443, 8080
+  protocol: "tcp" | "udp";
+  service_name?: string;       // e.g. "ssh", "http", "https"
+  product?: string;            // e.g. "OpenSSH", "nginx"
+  version?: string;            // e.g. "9.3p1", "1.24.0"
+  state: "open" | "filtered" | "closed";
+  vulnerabilities?: Vulnerability[];
+}
+```
+
+### `Vulnerability`
+Represents a confirmed CVE or security issue discovered by NSE vulnerability scripts.
+
+```typescript
+interface Vulnerability {
+  id: number;
+  device_id: number;
+  service_port: number;
+  cve_id: string;              // e.g. "CVE-2023-38408"
+  title: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
+  cvss_score: number;          // CVSS base score (0.0 to 10.0)
+  is_exploit: boolean;         // True if public exploit is known
+  status: "open" | "resolved"; // Tracks remediation over time
+}
+```
+
+---
+
+## 2. Endpoint & Incident Models
+
+### `Agent`
+Represents an enrolled Linux host streaming eBPF telemetry.
+
+```typescript
+interface Agent {
+  agent_id: string;            // Unique UUID generated during enrollment
+  device_id?: number;          // Bound local Device record
+  hostname: string;
+  kernel: string;              // e.g. "6.5.0-41-generic"
+  agent_version: string;
+  enrolled_at: string;
+  last_heartbeat: string;
+  status: "active" | "revoked" | "conflict";
+}
+```
+
+### `Incident`
+Represents an active threat detected by the deterministic detection engine.
+
+```typescript
+interface Incident {
+  id: number;
+  device_id: number;
+  agent_id: string;
+  rule_id: string;             // e.g. "rule-injection-ptrace"
+  title: string;               // e.g. "Cross-Process Memory Injection"
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  score: number;
+  mitre_tactic?: string;       // e.g. "Defense Evasion"
+  mitre_technique?: string;    // e.g. "Process Injection (T1055)"
+  pid_root: number;
+  hit_count: number;
+  status: "open" | "acknowledged" | "closed";
+}
+```
+
+---
+
+## 3. Temporal Timeline Models
+
+### `TimelinePeriod` & `ScanTick`
+Used by the frontend to render activity histories without timeline gaps:
+
+```typescript
+interface TimelinePeriod {
+  started_at: string;
+  ended_at: string;
+  status: "up" | "down";
+  is_vulnerable: boolean;
+  vulns_count: number;
+  max_severity: string;
+  is_ongoing: boolean;
+}
+```

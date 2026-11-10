@@ -1,0 +1,75 @@
+# Processes & Concurrency
+
+Cerberus handles high-throughput asynchronous work—such as scanning thousands of network sockets and processing millions of kernel eBPF events—while ensuring strict thread safety and bounded resource usage.
+
+---
+
+## 1. The Serialized Scan Gate (`scanGate`)
+
+One of the biggest issues with multi-threaded network scanners is **network saturation**: if a discovery sweep, a vulnerability audit, and an on-demand user scan run simultaneously, home and small-office routers drop packets, causing false negatives and degraded Wi-Fi performance.
+
+Cerberus solves this with a **single-slot semaphore** (`scanGate chan struct{}` in `internal/scheduler/scheduler.go`):
+
+```go
+// Only one scanning engine pipeline runs at any given moment
+select {
+case s.scanGate <- struct{}{}:
+    defer func() { <-s.scanGate }()
+    // Execute Stage 1, Stage 2, and Stage 3 safely
+default:
+    // Scan already running: queue or return ErrScanInProgress
+}
+```
+
+- When a scheduled discovery scan runs, it holds `scanGate`.
+- If an immediate scan of a newly discovered host is triggered, it waits peacefully for `scanGate` rather than launching concurrently.
+- Scans never collide or flood the link-layer network adapter.
+
+---
+
+## 2. Immediate Reactive Audit Queue
+
+When an unknown IP address appears on the local network (either through passive mDNS broadcast or kernel ARP table updates), waiting for the next 20-minute cycle is unacceptable.
+
+Cerberus uses a dedicated buffered channel:
+
+1. **Host Enqueue:** `s.EnqueueImmediateScan(ip)` places the IP onto `immediateVulnCh`.
+2. **Grace Delay (3s):** Sleeping smartphones or newly attached devices take 1–3 seconds to finish DHCP negotiation and open listening sockets. Cerberus delays the immediate audit by 3 seconds (`CERBERUS_IMMEDIATE_DELAY`) to prevent scanning half-initialized network states.
+3. **Targeted Audit:** Once `scanGate` is available, Cerberus executes Stages 1–3 exclusively against that specific host.
+
+---
+
+## 3. Sharded Telemetry Ingestion
+
+When multiple Linux endpoints stream high-volume eBPF event batches into the Sentinel daemon, lock contention on the detection engine would create latency bottlenecks.
+
+In `internal/detect/engine.go`, event processing is sharded:
+
+- **Dispatcher Shards:** Scaled dynamically to `runtime.GOMAXPROCS(0)`.
+- **Bounded Buffer:** Each shard maintains a queue depth of `shardQueueDepth = 64`.
+- **Hash-Partitioning:** Events from the same `(agent_id, pid)` are routed to the same shard using FNV-1a hashing. This ensures deterministic rule evaluation for process lifecycles without global mutex locks.
+
+---
+
+## 4. Live P95 Latency via Reservoir Sampling
+
+To provide a real-time health indicator in the UI (`detect_lag_ms_p95`), Cerberus calculates 95th-percentile detection latency across millions of streaming events using **Algorithm R Reservoir Sampling**:
+
+$$\text{Sample Space} = 2,048 \text{ entries}$$
+
+- Avoids storing unbounded timestamp slices in memory.
+- Gives a statistically sound P95 latency measurement without garbage collection pauses.
+- When latency spikes beyond 50ms, the UI highlights an actionable performance warning.
+
+---
+
+## 5. Parallel Multi-Channel Identity Resolver
+
+During Stage 1 discovery, host identity must be enriched as fast as possible without blocking the main scan thread. `MultiChannelResolver.ResolveHost` spawns four parallel goroutines with strict sub-second timeouts:
+
+| Channel | Protocol | Timeout | Target Attribute |
+|---|---|---|---|
+| **Bonjour / mDNS** | UDP 5353 | `1500ms` | Apple / Android friendly hostnames |
+| **NetBIOS Name Service** | UDP 137 | `600ms` | Windows computer names & Samba shares |
+| **Router Gateway PTR** | DNS (UDP 53) | `600ms` | DHCP server assigned hostnames |
+| **UPnP Discovery** | HTTP (TCP 80/8080/49152) | `1000ms` | Smart TVs, routers, IoT device descriptions |

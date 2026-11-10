@@ -1,0 +1,59 @@
+# Future Improvements & Roadmap
+
+The development roadmap for Cerberus focuses on intelligent automation, machine learning assistance, and expanding endpoint coverage.
+
+---
+
+## 1. Smart Adaptive Scanning Speed
+
+### The Concept
+Currently, scan concurrency parameters (such as RustScan batching and Nmap min-parallelism) use tuned default values (`--min-parallelism 64`, `--max-rtt-timeout 500ms`). 
+
+In future releases, Cerberus will implement **Dynamic Throughput Tuning**:
+- **Automatic RTT Calibration:** The scanner probes the local default gateway with 5 test ping datagrams to measure baseline latency and jitter.
+- **Backpressure Detection:** If packet loss exceeds 2% or round-trip time spikes by more than 50%, the engine automatically scales back packets per second (`pkts/s`).
+- **Device-Aware Throttling:** Detects low-power embedded devices (e.g. smart bulbs, microcontrollers) and reduces port probe speed to avoid crashing sensitive embedded network stacks.
+
+<MetricBar
+  label="Target Adaptive Scan Efficiency"
+  value="99.4%"
+  percentage={99}
+  benchmark="Zero router drops"
+  color="emerald"
+  subtext="Automatically scales from 500 pkts/s on low-end routers up to 10,000 pkts/s on enterprise switches."
+/>
+
+---
+
+## 2. Lightweight AI / ML Helper Model for OS & Device Guessing
+
+### The Concept
+While Nmap's TCP/IP stack fingerprinting (`--osscan-guess`) is powerful, it frequently struggles with modern embedded IoT appliances, streaming sticks, and custom smart home hubs where signatures are ambiguous or listening ports are sparse.
+
+### Implementation Plan
+- **Embedded ONNX / TensorRT Model:** Embed a compact machine learning model (< 15 MB) into the Go binary.
+- **Multi-Feature Inference:** Input features will include:
+  - IEEE OUI vendor prefix
+  - TCP initial window size, TTL, and DF flags
+  - mDNS TXT record strings (e.g. `model=J42d`, `deviceid=...`)
+  - Open port combination fingerprints (e.g., ports 80 + 554 + 8000)
+- **High-Fidelity Classification:** Produces a ranked prediction with confidence scores (e.g. `"Philips Hue Bridge v2 (94% confidence)"` instead of generic `"Linux 3.X"`).
+
+---
+
+## 3. Passive DHCP Snooping & Raw Packet Capture
+
+### The Concept
+Currently, new devices are detected passively through mDNS/SSDP announcements or operating system neighbor cache polling.
+
+- **The Future Feature:** Implementing a raw capture listener on the local interface to monitor DHCP `DISCOVER` and `REQUEST` broadcasts (UDP 67/68).
+- **Instant Discovery:** Because every device must negotiate DHCP to join the network, Cerberus will detect new devices the exact millisecond they connect, before they even finish obtaining an IP address.
+
+---
+
+## 4. Remote LAN Agent Ingestion & Enterprise Fleets
+
+In the current release, the eBPF agent ingest endpoint is intentionally restricted to loopback (`127.0.0.1:8080`) to ensure absolute security out of the box.
+
+- **Remote Ingest (Tracked in Issue #8):** Adding mutual TLS (mTLS) and token rotation to allow remote Linux servers across the office or home lab to stream eBPF telemetry into a central Sentinel desktop app.
+- **UI Incident Console (Tracked in Issue #12):** A dedicated security incident view within the Wails desktop frontend showing real-time MITRE ATT&CK process trees and kill-chain alerts.
